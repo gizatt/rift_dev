@@ -32,6 +32,7 @@
 #include "Eigen/Geometry"
 
 namespace xen_rift {
+    bool go_fullscreen_on_monitor(int monid, char * display_name);
 
     Eigen::Vector3f getEulerAnglesFromQuat(Eigen::Quaternionf& input);
 

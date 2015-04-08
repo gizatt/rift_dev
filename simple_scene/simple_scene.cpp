@@ -73,7 +73,7 @@ Ironman_HUD * hud_manager;
                             
    ######################################################################### */        
 // opengl initialization
-void initOpenGL(int w, int h, void*d);
+void initOpenGL(int w, int h);
 //    GLUT display callback -- updates screen
 void glut_display();
 // Helper to set up lighting
@@ -137,10 +137,13 @@ int main(int argc, char* argv[]) {
     rift_manager = new Rift(true);
 
     //Go get openGL set up / get the critical glob. variables set up
-    initOpenGL(1280, 720, NULL);
+    initOpenGL(1920, 1080);
+
+    bool out = go_fullscreen_on_monitor(2, "display");
+    if (!out) return -1;
 
     // and finish init after. so awk!
-    rift_manager->initialize(1280, 720);
+    rift_manager->initialize(1920, 1080);
     
 
     //Gotta register our callbacks
@@ -154,8 +157,6 @@ int main(int argc, char* argv[]) {
     glutMotionFunc(motion);
     glutReshapeFunc(resize);
 
-    // go fullscreen
-    glutFullScreen();
 
     // get helpers set up now that opengl is up
     Eigen::Vector3f zeropos = Eigen::Vector3f(0.0, 0.0, 0.0);
@@ -187,13 +188,13 @@ int main(int argc, char* argv[]) {
             gets it registered with CUDA
         
    ######################################################################### */
-void initOpenGL(int w, int h, void*d = NULL) {
+void initOpenGL(int w, int h) {
     // a bug in the Windows GLUT implementation prevents us from
     // passing zero arguments to glutInit()
     int c=1;
     char* dummy = "";
     glutInit( &c, &dummy );
-    glutInitDisplayMode( GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH );
+    glutInitDisplayMode( GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE  );
     glutInitWindowSize( w, h );
     glutCreateWindow( "display" );
 

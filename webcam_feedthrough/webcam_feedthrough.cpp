@@ -53,7 +53,7 @@ CvCapture* l_capture;
 int l_capture_num = 0;
 CvCapture* r_capture;
 int r_capture_num = 1;
-int exposure_num = 0;
+int exposure_num = -5;
 
 GLuint ipl_convert_texture;
 float render_dist = 1.5;
@@ -63,6 +63,7 @@ bool apply_threshold = false;
 bool apply_sobel = false;
 bool apply_canny_contours = false;
 bool apply_features = false;
+bool apply_reichardt = false;
 int threshold_val = 100;
 int canny_thresh = 100;
 RNG rng(12345);
@@ -75,13 +76,13 @@ float xyz[480][640][3];
 short *depth = 0;
 char *rgb = 0;
 Textbox_3D * textbox_kinect;
-Eigen::Vector3f textbox_kinect_pos(2.0, -2.0, -2.0);
+Eigen::Vector3f textbox_kinect_pos(1.0, -1.0, -2.0);
 
 float z_pos = 0.0;
 
 // FPS textbox
 Textbox_3D * textbox_fps;
-Eigen::Vector3f textbox_fps_pos(-2.0, -2.0, -2.0);
+Eigen::Vector3f textbox_fps_pos(-1.0, -1.0, -2.0);
 
 bool show_textbox_hud = false;
 
@@ -154,10 +155,13 @@ int main(int argc, char* argv[]) {
     rift_manager = new Rift(true);
 
     //Go get openGL set up / get the critical glob. variables set up
-    initOpenGL(1280, 720, NULL);
+    initOpenGL(1920, 1080, NULL);
+
+    bool out = go_fullscreen_on_monitor(2, "display");
+    if (!out) return -1;
 
     // and finish init after. so awk!
-    rift_manager->initialize(1280, 720);
+    rift_manager->initialize(1920, 1080);
 
     //Gotta register our callbacks
     glutIdleFunc( glut_idle );
@@ -169,9 +173,6 @@ int main(int argc, char* argv[]) {
     glutMouseFunc(mouse);
     glutMotionFunc(motion);
     glutReshapeFunc(resize);
-
-    // go fullscreen
-    glutFullScreen();
 
     // Register cleanup handler
     atexit(cleanup);  
@@ -187,8 +188,8 @@ int main(int argc, char* argv[]) {
     //cvSetCaptureProperty(l_capture, CV_CAP_PROP_FOURCC, CV_FOURCC('M', 'J', 'P', 'G'));
     //cvSetCaptureProperty(r_capture, CV_CAP_PROP_FOURCC, CV_FOURCC('M', 'J', 'P', 'G'));
 
-    cvSetCaptureProperty(l_capture, CV_CAP_PROP_FRAME_WIDTH, 600);
-    cvSetCaptureProperty(r_capture, CV_CAP_PROP_FRAME_WIDTH, 600);
+    cvSetCaptureProperty(l_capture, CV_CAP_PROP_FRAME_WIDTH, 640);
+    cvSetCaptureProperty(r_capture, CV_CAP_PROP_FRAME_WIDTH, 640);
     cvSetCaptureProperty(l_capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
     cvSetCaptureProperty(r_capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
 
@@ -255,7 +256,7 @@ void initOpenGL(int w, int h, void*d = NULL) {
     glMatrixMode(GL_MODELVIEW);
 
     //And adjust point size
-    glPointSize(2);
+    glPointSize(1);
     //Enable depth-sorting of points during rendering
     glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
@@ -275,14 +276,10 @@ void initOpenGL(int w, int h, void*d = NULL) {
 
     glEnable(GL_DEPTH_TEST);
     glGenTextures(1, &gl_rgb_tex);
-    glEnable( GL_TEXTURE_2D );
-    glBindTexture(GL_TEXTURE_2D, gl_rgb_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glDisable( GL_TEXTURE_2D );
 
     glFinish();
 }
@@ -314,27 +311,37 @@ void glut_display(){
     if (show_kinect){
         uint32_t ts;
         if (freenect_sync_get_depth((void**)&depth, &ts, 0, FREENECT_DEPTH_11BIT) < 0){
+            printf("Derp\n");
             show_kinect = false;
         } else {
             if (freenect_sync_get_video((void**)&rgb, &ts, 0, FREENECT_VIDEO_RGB) < 0){
-                show_kinect = false;
+                //show_kinect = false;
+                ;
             } else {
+                rgb = (char *) malloc(sizeof(char) * 640*480*3);
                 int i,j;
+                int tot = 0;
                 for (i = 0; i < 480; i++) {
                     for (j = 0; j < 640; j++) {
-                        xyz[i][j][0] = ((float)j)/640.;
-                        xyz[i][j][1] = ((float)i)/480.;
+                        xyz[i][j][0] = 2.*((float)j)/640.-1.0;
+                        xyz[i][j][1] = 2.*((float)i)/480.-1.0;
                         if (depth[i*640+j] >= 2047)
                             xyz[i][j][2] = 10000.0;
-                        else
+                        else{
+                            tot++;
                             xyz[i][j][2] = -1.0*((float)depth[i*640+j])/2048.;
+                        }
                         indices[i][j] = i*640+j;
+                        //rgb[3*(i*640+j)] = 50;
+                        //rgb[3*(i*640+j)+1] = 50;
+                        //rgb[3*(i*640+j)+2] = 50;
                     }
                 }
+                printf("tot %d\n", tot);
             }
         }
+        
     }
-
     // and get player location -- roundabout in case I want to add something
     // useful here in the future...
     Eigen::Vector3f curr_translation(0.0, 0.0, 0.0);
@@ -382,10 +389,12 @@ void render_core(){
     //capture webcam frame
     IplImage* frame_ipl = NULL;
     get_elapsed(GET_ELAPSED_PERF);
-    if (rift_manager->which_eye()=='r')
-        frame_ipl = cvRetrieveFrame( r_capture );
-    else
-        frame_ipl = cvRetrieveFrame( l_capture );
+    if (draw_main_image){
+        if (rift_manager->which_eye()=='r')
+            frame_ipl = cvRetrieveFrame( r_capture );
+        else
+            frame_ipl = cvRetrieveFrame( l_capture );
+    }
     printf("Took %d\n", get_elapsed(GET_ELAPSED_PERF));
     // I suspect that frame_ipl should be freed but 
     //  the leak is small enough not to matter if it exists at all.
@@ -446,6 +455,12 @@ void render_core(){
             addWeighted( tmpgray, 0.5, frame, 0.5, 0, frame );
         }
 
+        if (apply_reichardt){
+            // calculate optic flow across image using reichardt detector
+            // framework
+            
+        }
+
         if (apply_features)
             // Add results to image and save.
             cv::drawKeypoints(frame, keypoints, frame);
@@ -485,32 +500,21 @@ void render_core(){
 
     // and textboxs
     if (show_textbox_hud){
-        glPushMatrix();
-        glLoadIdentity();
         Eigen::Vector3f updog = Eigen::Vector3f(Eigen::Quaternionf::FromTwoVectors(
             Eigen::Vector3f(0.0, 0.0, -1.0), textbox_fps_pos)*Eigen::Vector3f(0.0, 1.0, 0.0));
         textbox_fps->draw( updog );
         updog = Eigen::Vector3f(Eigen::Quaternionf::FromTwoVectors(
             Eigen::Vector3f(0.0, 0.0, -1.0), textbox_kinect_pos)*Eigen::Vector3f(0.0, 1.0, 0.0));
         textbox_kinect->draw( updog );
-        glPopMatrix();
     }
 
     // and kinect if we're doing it
     if (show_kinect){
+        printf("here\n");
         glDisable(GL_LIGHTING);
+
         glPushMatrix();
-        glLoadIdentity();
-
-        glRotatef(180.0f,0.0f,0.0f,-1.0f);
-        glScalef(-1.0, 1.0, 1.0);
-        glTranslatef(-0.5, -0.5, -0.5);
-        
-
-        if (rift_manager->which_eye() == 'r')
-            glTranslatef(-0.1, 0.0, 0.0);
-        else
-            glTranslatef(0.1, 0.0, 0.0);
+        glTranslatef(0,0,-0.5);
 
         // Set the projection from the XYZ to the texture image
         glMatrixMode(GL_TEXTURE);
@@ -521,7 +525,7 @@ void render_core(){
         //LoadVertexMatrix();
         glMatrixMode(GL_MODELVIEW);
 
-        glPointSize(2);
+        glPointSize(1);
 
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(3, GL_FLOAT, 0, xyz);
@@ -613,6 +617,9 @@ void normal_key_handler(unsigned char key, int x, int y) {
             break;
         case 'f':
             apply_features = !apply_features;
+            break;
+        case 'r':
+            apply_reichardt = !apply_reichardt;
             break;
         case ']':
             if (threshold_val < 255)

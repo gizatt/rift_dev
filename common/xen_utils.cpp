@@ -18,6 +18,36 @@ using namespace std;
 using namespace xen_rift;
 using namespace Eigen;
 
+// goes full screen on a specified monitor
+int monidctr;
+RECT lprcReturn;
+BOOL CALLBACK lpfnEnumFunc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData){
+   if (monidctr == 0){
+        memcpy(&lprcReturn, lprcMonitor, sizeof(RECT));
+        return false;
+    } else {
+       // next
+       monidctr--;
+       return true;
+    }
+
+}
+bool xen_rift::go_fullscreen_on_monitor(int monid, char * display_name){
+    // enumerate monitors, get monitor of specified id
+    monidctr = monid;
+    EnumDisplayMonitors(NULL, NULL, lpfnEnumFunc, 0);
+    if (monidctr > 0){
+        printf("Error: couldn't find monitor %d. Not enough displays exist.\n", monid);
+        return false;
+    }
+    // otherwise go fullscreen on its rect
+    HWND hwnd = FindWindow(NULL, display_name);
+    SetWindowLong(hwnd, GWL_STYLE, WS_POPUP | WS_MAXIMIZE);
+    SetWindowPos(hwnd, NULL, lprcReturn.left, lprcReturn.top, lprcReturn.right-lprcReturn.left, lprcReturn.bottom-lprcReturn.top, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    return true;
+}
+
 // Converts Eigen Quaternion to a Vector3f of Euler Angles
 // adapted from sixense_math file of the sixense SDK
 Vector3f xen_rift::getEulerAnglesFromQuat(Quaternionf& input){

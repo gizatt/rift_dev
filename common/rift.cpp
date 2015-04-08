@@ -89,10 +89,26 @@ void Rift::initialize(int inputWidth, int inputHeight)
     ovrHmd_SetEnabledCaps(_hmd, ovrHmdCap_LowPersistence | ovrHmdCap_DynamicPrediction);
     dcaps = ovrDistortionCap_Chromatic | ovrDistortionCap_Vignette | ovrDistortionCap_TimeWarp |
         ovrDistortionCap_Overdrive;
-
     if(!ovrHmd_ConfigureRendering(_hmd, &glcfg.Config, dcaps, _hmd->DefaultEyeFov, _eye_rdesc)) {
         printf("Failed to configure distortion renderer!\n");
     }
+
+    if(_hmd->HmdCaps & ovrHmdCap_ExtendDesktop) {
+        printf("running in \"extended desktop\" mode\n");
+    } else {
+        /* to sucessfully draw to the HMD display in "direct-hmd" mode, we have to
+         * call ovrHmd_AttachToWindow
+         */
+        HWND sys_win = GetActiveWindow();
+        glcfg.OGL.Window = sys_win;
+        glcfg.OGL.DC = wglGetCurrentDC();
+        ovrHmd_AttachToWindow(_hmd, sys_win, 0, 0);
+        printf("running in \"direct-hmd\" mode\n");
+        printf("WARNING: THIS DOESN'T WORK FOR ME YET. STUTTERS! D:\n");
+    }
+
+
+
     // display health and safety warning
     ovrhmd_EnableHSWDisplaySDKRender(_hmd, 0);
 
